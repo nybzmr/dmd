@@ -82,6 +82,7 @@ import dmd.templateparamsem;
 import dmd.templatesem;
 import dmd.typesem;
 import dmd.visitor;
+import dmd.dstructsem;
 
 version (IN_GCC) {}
 else version (IN_LLVM) {}

@@ -77,6 +77,7 @@ import dmd.backend.rtlsym;
 import dmd.backend.symtab;
 import dmd.backend.ty;
 import dmd.backend.type;
+import dmd.dstructsem;
 
 import dmd.backend.x86.code_x86;
 
