@@ -1,0 +1,99 @@
+name: Compiler Performance Benchmark
+
+on:
+  workflow_dispatch:
+    branches: [master]
+
+jobs:
+  performance-benchmark:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          path: pr
+
+      - name: Checkout master branch
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          path: master
+
+      - name: Bootstrap D environment
+        uses: dlang-community/setup-dlang@v1
+        with:
+          compiler: dmd
+
+      - name: Build PR compiler
+        run: |
+          cd $GITHUB_WORKSPACE/pr
+          make -f posix.mak AUTO_BOOTSTRAP=1 -j$(nproc)
+
+      - name: Build Master compiler
+        run: |
+          cd $GITHUB_WORKSPACE/master
+          make -f posix.mak AUTO_BOOTSTRAP=1 -j$(nproc)
+
+      - name: Benchmark compilers
+        run: |
+          # Use explicit paths to built compilers
+          PR_COMPILER="$GITHUB_WORKSPACE/pr/generated/linux/release/64/dmd"
+          MASTER_COMPILER="$GITHUB_WORKSPACE/master/generated/linux/release/64/dmd"
+
+      - name: Run compilation benchmarks
+        run: |
+          # System information
+          echo "## System Configuration" > benchmark.md
+          echo "- Cores: $(nproc)" >> benchmark.md
+          echo "- CPU: $(lscpu | grep 'Model name' | cut -d':' -f2 | xargs)" >> benchmark.md
+          echo "- Memory: $(free -m | awk '/Mem:/ {print $2}') MB" >> benchmark.md
+          echo "- Kernel: $(uname -r)" >> benchmark.md
+
+          # Benchmark function
+          benchmark() {
+            local compiler=$1
+            local prefix=$2
+            
+            echo "\n### $prefix Compiler" >> benchmark.md
+            /usr/bin/time -v "$compiler" -O -release -inline -boundscheck=off \
+              -of=benchmark-$prefix \
+              compiler/test/benchmark/compile_heavy.d 2>&1 | tee metrics-$prefix.txt
+            
+            echo "\n**Metrics**:" >> benchmark.md
+            grep -E 'Elapsed|Maximum resident' metrics-$prefix.txt | sed 's/.*://' | xargs >> benchmark.md
+            echo "- Binary size: $(stat -c '%s' benchmark-$prefix) bytes" >> benchmark.md
+          }
+
+          # Run benchmarks
+          benchmark ./pr-compiler/generated/linux/release/64/dmd "PR"
+          benchmark ./master-compiler/generated/linux/release/64/dmd "Master"
+
+      - name: Generate comparison report
+        run: |
+          # Extract metrics
+          pr_time=$(grep 'Elapsed' metrics-PR.txt | awk '{print $NF}')
+          master_time=$(grep 'Elapsed' metrics-Master.txt | awk '{print $NF}')
+          time_diff=$(echo "$pr_time - $master_time" | bc | awk '{printf "%.2f", $0}')
+          
+          pr_mem=$(grep 'Maximum resident' metrics-PR.txt | awk '{print $NF}')
+          master_mem=$(grep 'Maximum resident' metrics-Master.txt | awk '{print $NF}')
+          mem_diff=$((pr_mem - master_mem))
+          
+          pr_size=$(stat -c '%s' benchmark-PR)
+          master_size=$(stat -c '%s' benchmark-Master)
+          size_diff=$((pr_size - master_size))
+
+          # Generate report
+          echo "\n## Performance Comparison" >> benchmark.md
+          echo "| Metric | PR | Master | Difference |" >> benchmark.md
+          echo "|--------|----|--------|------------|" >> benchmark.md
+          echo "| **Compilation Time (s)** | $pr_time | $master_time | \`$time_diff\` |" >> benchmark.md
+          echo "| **Memory Usage (KB)** | $pr_mem | $master_mem | \`$mem_diff\` |" >> benchmark.md
+          echo "| **Binary Size (bytes)** | $pr_size | $master_size | \`$size_diff\` |" >> benchmark.md
+
+      - name: Upload benchmark report
+        uses: actions/upload-artifact@v3
+        with:
+          name: performance-benchmark
+          path: benchmark.md
