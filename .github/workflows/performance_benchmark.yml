@@ -9,44 +9,38 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 0) Install a host DMD for bootstrapping
       - name: Setup host D compiler
         uses: dlang-community/setup-dlang@v2
         with:
           compiler: dmd
 
-      # 1) Checkout PR branch (only dmd repo)
-      - name: Checkout PR branch
+      - name: Checkout PR branch (DMD only)
         uses: actions/checkout@v4
         with:
-          path: pr
+          path: pr/dmd
           fetch-depth: 0
 
-      # 2) Bootstrap PR compiler (stage-1 → stage-2), telling make where HOST_DMD is
-      - name: Bootstrap DMD for PR
-        working-directory: pr
+      - name: Bootstrap PR compiler
+        working-directory: pr/dmd
         env:
-          HOST_DMD: ${{ env.DMD }}       # the setup-dlang action sets DMD :contentReference[oaicite:2]{index=2}
+          HOST_DMD: ${{ env.DMD }}
         run: make -f posix.mak AUTO_BOOTSTRAP=1 -j$(nproc)
 
-      # 3) Build Druntime using the newly built DMD
       - name: Build Druntime for PR
-        working-directory: pr/druntime
+        working-directory: pr/dmd/druntime
         env:
-          DMD: ${{ github.workspace }}/pr/generated/linux/release/64/dmd
+          DMD: ${{ github.workspace }}/pr/dmd/generated/linux/release/64/dmd
         run: make -f posix.mak -j$(nproc) DMD="$DMD"
 
-      # 4) Clone & build Phobos in sibling folder
       - name: Clone Phobos for PR
-        run: git clone --depth=1 https://github.com/dlang/phobos.git pr/phobos  # get std lib :contentReference[oaicite:4]{index=4}
+        run: git clone --depth=1 https://github.com/dlang/phobos.git pr/phobos
 
       - name: Build Phobos for PR
         working-directory: pr/phobos
         env:
           DMD: ${{ github.workspace }}/pr/dmd/generated/linux/release/64/dmd
-        run: make -f posix.mak -j$(nproc) DMD="$DMD"  # builds phobos + druntime imports :contentReference[oaicite:5]{index=5}
+        run: make -f posix.mak -j$(nproc) DMD="$DMD"
 
-      # 5) Repeat for Master branch
       - name: Checkout master branch (DMD only)
         uses: actions/checkout@v4
         with:
@@ -75,62 +69,56 @@ jobs:
           DMD: ${{ github.workspace }}/master/dmd/generated/linux/release/64/dmd
         run: make -f posix.mak -j$(nproc) DMD="$DMD"
 
-      # 6) Export paths to both compilers
       - name: Export compiler paths
         run: |
-          echo "PR_COMPILER=$GITHUB_WORKSPACE/pr/generated/linux/release/64/dmd" >> $GITHUB_ENV
-          echo "MASTER_COMPILER=$GITHUB_WORKSPACE/master/generated/linux/release/64/dmd" >> $GITHUB_ENV
+          echo "PR_COMPILER=$GITHUB_WORKSPACE/pr/dmd/generated/linux/release/64/dmd" >> $GITHUB_ENV
+          echo "MASTER_COMPILER=$GITHUB_WORKSPACE/master/dmd/generated/linux/release/64/dmd" >> $GITHUB_ENV
 
-      # 7) Sanity-check your benchmark file
       - name: List benchmark files
-        run: ls -R pr/compiler/test/benchmark
+        run: ls -R pr/dmd/compiler/test/benchmark
 
       - name: Run compilation benchmarks
         run: |
-          # Prepare report
           echo "## System Configuration" > benchmark.md
           echo "- Cores: $(nproc)" >> benchmark.md
           echo "- CPU: $(lscpu | awk -F: '/Model name/ {print $2}' | xargs)" >> benchmark.md
           echo "- Memory: $(free -m | awk '/Mem:/ {print $2}') MB" >> benchmark.md
           echo "- Kernel: $(uname -r)" >> benchmark.md
 
-          # Benchmark function
           benchmark() {
-            local compiler=$1
-            local prefix=$2
-            local src="$3"
-
+            local compiler=$1 prefix=$2 src=$3
             echo -e "\n### $prefix Compiler" >> benchmark.md
             /usr/bin/time -v "$compiler" -O -release -inline -boundscheck=off \
-              -of="$GITHUB_WORKSPACE/${prefix}-binary" "$src" \
-              2>&1 | tee metrics-${prefix}.txt
-
+              -of="$GITHUB_WORKSPACE/${prefix}-binary" "$src" 2>&1 | tee metrics-${prefix}.txt
             echo -e "\n**Metrics**:" >> benchmark.md
-            grep -E 'Elapsed \(wall clock\)|Maximum resident set size' metrics-${prefix}.txt \
-              | sed 's/.*://' \
-              | xargs \
-              >> benchmark.md
-
+            grep -E 'Elapsed|Maximum resident set size' metrics-${prefix}.txt \
+              | sed 's/.*://' | xargs >> benchmark.md
             echo "- Binary size: $(stat -c '%s' $GITHUB_WORKSPACE/${prefix}-binary) bytes" >> benchmark.md
           }
 
-          # Run against the single test file
-          FILE_PATH="pr/compiler/test/benchmark/binaryTree.d"
-          benchmark "$PR_COMPILER" "PR"     "$GITHUB_WORKSPACE/$FILE_PATH"
-          benchmark "$MASTER_COMPILER" "Master" "$GITHUB_WORKSPACE/$FILE_PATH"
+          FILE="pr/dmd/compiler/test/benchmark/binaryTree.d"
+          benchmark "$PR_COMPILER" PR     "$GITHUB_WORKSPACE/$FILE"
+          benchmark "$MASTER_COMPILER" Master "$GITHUB_WORKSPACE/$FILE"
 
       - name: Generate comparison report
         run: |
-          pr_time=$(grep 'Elapsed (wall clock)' metrics-PR.txt | awk '{print $NF}')
-          master_time=$(grep 'Elapsed (wall clock)' metrics-Master.txt | awk '{print $NF}')
-          # … other metric-gathering …
+          pr_time=$(grep 'Elapsed' metrics-PR.txt | awk '{print $NF}')
+          master_time=$(grep 'Elapsed' metrics-Master.txt | awk '{print $NF}')
+          pr_mem=$(grep 'Maximum resident set size' metrics-PR.txt | awk '{print $NF}')
+          master_mem=$(grep 'Maximum resident set size' metrics-Master.txt | awk '{print $NF}')
+          pr_size=$(stat -c '%s' PR-binary)
+          master_size=$(stat -c '%s' Master-binary)
+          time_diff=$(echo "$pr_time - $master_time" | bc)
+          mem_diff=$((pr_mem - master_mem))
+          size_diff=$((pr_size - master_size))
 
-          echo -e "\n## Performance Comparison" >> benchmark.md
+          echo "" >> benchmark.md
+          echo "## Performance Comparison" >> benchmark.md
           echo "| Metric                         | PR       | Master   | Difference |" >> benchmark.md
           echo "|--------------------------------|----------|----------|------------|" >> benchmark.md
-          echo "| **Compilation Time (s)**       | $pr_time  | $master_time  | `$time_diff` |" >> benchmark.md
-          echo "| **Memory Usage (KB)**          | $pr_mem   | $master_mem   | `$mem_diff`  |" >> benchmark.md
-          echo "| **Binary Size (bytes)**        | $pr_size  | $master_size  | `$size_diff` |" >> benchmark.md
+          echo "| **Compilation Time (s)**       | $pr_time | $master_time | \`$time_diff\` |" >> benchmark.md
+          echo "| **Memory Usage (KB)**          | $pr_mem  | $master_mem  | \`$mem_diff\`  |" >> benchmark.md
+          echo "| **Binary Size (bytes)**        | $pr_size | $master_size | \`$size_diff\` |" >> benchmark.md
 
       - name: Upload benchmark report
         uses: actions/upload-artifact@v4
