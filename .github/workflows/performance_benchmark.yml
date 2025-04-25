@@ -70,7 +70,7 @@ jobs:
           }
 
           # Run against the single test file
-          FILE_PATH="pr/compiler/test/benchmark/compile_heavy.d"
+          FILE_PATH="pr/compiler/test/benchmark/binartTree.d"
           benchmark "$PR_COMPILER" "PR"     "$GITHUB_WORKSPACE/$FILE_PATH"
           benchmark "$MASTER_COMPILER" "Master" "$GITHUB_WORKSPACE/$FILE_PATH"
 
