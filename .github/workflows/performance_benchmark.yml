@@ -3,22 +3,24 @@ name: Compiler Performance Benchmark
 on:
   pull_request:
   workflow_dispatch:
-
 jobs:
   performance-benchmark:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout PR branch
         uses: actions/checkout@v4
         with:
           path: pr
+          fetch-depth: 0
+          submodules: 'recursive'
 
       - name: Checkout master branch
         uses: actions/checkout@v4
         with:
           ref: master
           path: master
+          fetch-depth: 0
+          submodules: 'recursive'
 
       - name: Bootstrap D environment
         uses: dlang-community/setup-dlang@v2
@@ -34,6 +36,7 @@ jobs:
         run: |
           cd master
           make -f posix.mak AUTO_BOOTSTRAP=1 -j$(nproc)
+
 
       - name: Export compiler paths
         run: |
