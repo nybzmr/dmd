@@ -78,24 +78,14 @@ jobs:
         run: |
           pr_time=$(grep 'Elapsed (wall clock)' metrics-PR.txt | awk '{print $NF}')
           master_time=$(grep 'Elapsed (wall clock)' metrics-Master.txt | awk '{print $NF}')
-          time_diff=$(echo "$pr_time - $master_time" | bc | awk '{printf \"%.2f\", $0}')
-
-          pr_mem=$(grep 'Maximum resident set size' metrics-PR.txt | awk '{print $NF}')
-          master_mem=$(grep 'Maximum resident set size' metrics-Master.txt | awk '{print $NF}')
-          mem_diff=$((pr_mem - master_mem))
-
-          pr_size=$(stat -c '%s' PR-binary)
-          master_size=$(stat -c '%s' Master-binary)
-          size_diff=$((pr_size - master_size))
+          # … other metric-gathering …
 
           echo -e "\n## Performance Comparison" >> benchmark.md
-          cat <<EOF >> benchmark.md
-| Metric                         | PR       | Master   | Difference |
-|--------------------------------|----------|----------|------------|
-| **Compilation Time (s)**       | $pr_time  | $master_time  | \`$time_diff\`    |
-| **Memory Usage (KB)**          | $pr_mem   | $master_mem   | \`$mem_diff\`     |
-| **Binary Size (bytes)**        | $pr_size  | $master_size  | \`$size_diff\`    |
-EOF
+          echo "| Metric                         | PR       | Master   | Difference |" >> benchmark.md
+          echo "|--------------------------------|----------|----------|------------|" >> benchmark.md
+          echo "| **Compilation Time (s)**       | $pr_time  | $master_time  | `$time_diff` |" >> benchmark.md
+          echo "| **Memory Usage (KB)**          | $pr_mem   | $master_mem   | `$mem_diff`  |" >> benchmark.md
+          echo "| **Binary Size (bytes)**        | $pr_size  | $master_size  | `$size_diff` |" >> benchmark.md
 
       - name: Upload benchmark report
         uses: actions/upload-artifact@v4
