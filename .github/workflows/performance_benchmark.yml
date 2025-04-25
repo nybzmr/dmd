@@ -20,7 +20,7 @@ jobs:
           path: master
 
       - name: Bootstrap D environment
-        uses: dlang-community/setup-dlang@v1
+        uses: dlang-community/setup-dlang@v2
         with:
           compiler: dmd
 
@@ -92,7 +92,7 @@ jobs:
           echo "| **Binary Size (bytes)** | $pr_size | $master_size | \`$size_diff\` |" >> benchmark.md
 
       - name: Upload benchmark report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: performance-benchmark
           path: benchmark.md
