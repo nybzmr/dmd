@@ -9,37 +9,44 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1) Checkout only the DMD repo
-      - name: Checkout PR branch (DMD only)
+      # 0) Install a host DMD for bootstrapping
+      - name: Setup host D compiler
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: dmd
+
+      # 1) Checkout PR branch (only dmd repo)
+      - name: Checkout PR branch
         uses: actions/checkout@v4
         with:
           path: pr
           fetch-depth: 0
 
-      # 2) Bootstrap the PR compiler
+      # 2) Bootstrap PR compiler (stage-1 → stage-2), telling make where HOST_DMD is
       - name: Bootstrap DMD for PR
         working-directory: pr
-        run: make -f posix.mak AUTO_BOOTSTRAP=1 -j$(nproc)  # uses prebuilt DMD to build itself :contentReference[oaicite:8]{index=8}
+        env:
+          HOST_DMD: ${{ env.DMD }}       # the setup-dlang action sets DMD :contentReference[oaicite:2]{index=2}
+        run: make -f posix.mak AUTO_BOOTSTRAP=1 -j$(nproc)
 
-      # 3) Manually build Druntime against the new DMD
+      # 3) Build Druntime using the newly built DMD
       - name: Build Druntime for PR
         working-directory: pr/druntime
-        run: |
-          make -f posix.mak -j$(nproc) \
-            DMD="$GITHUB_WORKSPACE/pr/generated/linux/release/64/dmd"  # point to freshly built DMD :contentReference[oaicite:9]{index=9}
+        env:
+          DMD: ${{ github.workspace }}/pr/generated/linux/release/64/dmd
+        run: make -f posix.mak -j$(nproc) DMD="$DMD"
 
-      # 4) Clone & build Phobos for PR
+      # 4) Clone & build Phobos against your new DMD
       - name: Clone Phobos for PR
-        run: |
-          git clone --depth=1 https://github.com/dlang/phobos.git pr/phobos  # get std library :contentReference[oaicite:10]{index=10}
+        run: git clone --depth=1 https://github.com/dlang/phobos.git pr/phobos
 
       - name: Build Phobos for PR
         working-directory: pr/phobos
-        run: |
-          make -f posix.mak -j$(nproc) \
-            DMD="$GITHUB_WORKSPACE/pr/generated/linux/release/64/dmd"  # builds Phobos + Druntime import :contentReference[oaicite:11]{index=11}
+        env:
+          DMD: ${{ github.workspace }}/pr/generated/linux/release/64/dmd
+        run: make -f posix.mak -j$(nproc) DMD="$DMD"
 
-      # Repeat the same for the master branch
+      # 5) Repeat steps 1–4 for master branch
       - name: Checkout master branch
         uses: actions/checkout@v4
         with:
@@ -49,31 +56,32 @@ jobs:
 
       - name: Bootstrap DMD for Master
         working-directory: master
+        env:
+          HOST_DMD: ${{ env.DMD }}
         run: make -f posix.mak AUTO_BOOTSTRAP=1 -j$(nproc)
 
       - name: Build Druntime for Master
         working-directory: master/druntime
-        run: |
-          make -f posix.mak -j$(nproc) \
-            DMD="$GITHUB_WORKSPACE/master/generated/linux/release/64/dmd"
+        env:
+          DMD: ${{ github.workspace }}/master/generated/linux/release/64/dmd
+        run: make -f posix.mak -j$(nproc) DMD="$DMD"
 
       - name: Clone Phobos for Master
-        run: |
-          git clone --depth=1 https://github.com/dlang/phobos.git master/phobos
+        run: git clone --depth=1 https://github.com/dlang/phobos.git master/phobos
 
       - name: Build Phobos for Master
         working-directory: master/phobos
-        run: |
-          make -f posix.mak -j$(nproc) \
-            DMD="$GITHUB_WORKSPACE/master/generated/linux/release/64/dmd"
+        env:
+          DMD: ${{ github.workspace }}/master/generated/linux/release/64/dmd
+        run: make -f posix.mak -j$(nproc) DMD="$DMD"
 
-      # 5) Export compiler paths
+      # 6) Export paths to both compilers
       - name: Export compiler paths
         run: |
           echo "PR_COMPILER=$GITHUB_WORKSPACE/pr/generated/linux/release/64/dmd" >> $GITHUB_ENV
           echo "MASTER_COMPILER=$GITHUB_WORKSPACE/master/generated/linux/release/64/dmd" >> $GITHUB_ENV
 
-      # 6) Sanity-check your benchmark file exists
+      # 7) Sanity-check your benchmark file
       - name: List benchmark files
         run: ls -R pr/compiler/test/benchmark
 
