@@ -66,8 +66,8 @@ jobs:
           }
 
           # Run benchmarks
-          benchmark ./pr-compiler/generated/linux/release/64/dmd "PR"
-          benchmark ./master-compiler/generated/linux/release/64/dmd "Master"
+          benchmark ./pr-compiler/generated/linux/release/64/dmd "pr"
+          benchmark ./master-compiler/generated/linux/release/64/dmd "master"
 
       - name: Generate comparison report
         run: |

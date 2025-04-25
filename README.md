@@ -22,7 +22,7 @@ report a problem or browse the list of open bugs.
 ### Overview
 
 This repository is structured into the following directories.
-Refer to their respective `README.md` for more in-depth information.
+Refer to their respective `READE.md` for more in-depth information.
 
 | Directory                            | Description                                       |
 |--------------------------------------|---------------------------------------------------|
