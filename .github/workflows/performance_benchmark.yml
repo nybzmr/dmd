@@ -3,45 +3,79 @@ name: Compiler Performance Benchmark
 on:
   pull_request:
   workflow_dispatch:
+
 jobs:
   performance-benchmark:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout PR branch
+      # 1) Checkout only the DMD repo
+      - name: Checkout PR branch (DMD only)
         uses: actions/checkout@v4
         with:
           path: pr
           fetch-depth: 0
-          submodules: 'recursive'
 
+      # 2) Bootstrap the PR compiler
+      - name: Bootstrap DMD for PR
+        working-directory: pr
+        run: make -f posix.mak AUTO_BOOTSTRAP=1 -j$(nproc)  # uses prebuilt DMD to build itself :contentReference[oaicite:8]{index=8}
+
+      # 3) Manually build Druntime against the new DMD
+      - name: Build Druntime for PR
+        working-directory: pr/druntime
+        run: |
+          make -f posix.mak -j$(nproc) \
+            DMD="$GITHUB_WORKSPACE/pr/generated/linux/release/64/dmd"  # point to freshly built DMD :contentReference[oaicite:9]{index=9}
+
+      # 4) Clone & build Phobos for PR
+      - name: Clone Phobos for PR
+        run: |
+          git clone --depth=1 https://github.com/dlang/phobos.git pr/phobos  # get std library :contentReference[oaicite:10]{index=10}
+
+      - name: Build Phobos for PR
+        working-directory: pr/phobos
+        run: |
+          make -f posix.mak -j$(nproc) \
+            DMD="$GITHUB_WORKSPACE/pr/generated/linux/release/64/dmd"  # builds Phobos + Druntime import :contentReference[oaicite:11]{index=11}
+
+      # Repeat the same for the master branch
       - name: Checkout master branch
         uses: actions/checkout@v4
         with:
           ref: master
           path: master
           fetch-depth: 0
-          submodules: 'recursive'
 
-      - name: Bootstrap D environment
-        uses: dlang-community/setup-dlang@v2
-        with:
-          compiler: dmd
+      - name: Bootstrap DMD for Master
+        working-directory: master
+        run: make -f posix.mak AUTO_BOOTSTRAP=1 -j$(nproc)
 
-      - name: Build PR compiler
+      - name: Build Druntime for Master
+        working-directory: master/druntime
         run: |
-          cd pr
-          make -f posix.mak AUTO_BOOTSTRAP=1 -j$(nproc)
+          make -f posix.mak -j$(nproc) \
+            DMD="$GITHUB_WORKSPACE/master/generated/linux/release/64/dmd"
 
-      - name: Build Master compiler
+      - name: Clone Phobos for Master
         run: |
-          cd master
-          make -f posix.mak AUTO_BOOTSTRAP=1 -j$(nproc)
+          git clone --depth=1 https://github.com/dlang/phobos.git master/phobos
 
+      - name: Build Phobos for Master
+        working-directory: master/phobos
+        run: |
+          make -f posix.mak -j$(nproc) \
+            DMD="$GITHUB_WORKSPACE/master/generated/linux/release/64/dmd"
 
+      # 5) Export compiler paths
       - name: Export compiler paths
         run: |
           echo "PR_COMPILER=$GITHUB_WORKSPACE/pr/generated/linux/release/64/dmd" >> $GITHUB_ENV
           echo "MASTER_COMPILER=$GITHUB_WORKSPACE/master/generated/linux/release/64/dmd" >> $GITHUB_ENV
+
+      # 6) Sanity-check your benchmark file exists
+      - name: List benchmark files
+        run: ls -R pr/compiler/test/benchmark
 
       - name: Run compilation benchmarks
         run: |
