@@ -36,34 +36,34 @@ jobs:
           DMD: ${{ github.workspace }}/pr/generated/linux/release/64/dmd
         run: make -f posix.mak -j$(nproc) DMD="$DMD"
 
-      # 4) Clone & build Phobos against your new DMD
+      # 4) Clone & build Phobos in sibling folder
       - name: Clone Phobos for PR
-        run: git clone --depth=1 https://github.com/dlang/phobos.git pr/phobos
+        run: git clone --depth=1 https://github.com/dlang/phobos.git pr/phobos  # get std lib :contentReference[oaicite:4]{index=4}
 
       - name: Build Phobos for PR
         working-directory: pr/phobos
         env:
-          DMD: ${{ github.workspace }}/pr/generated/linux/release/64/dmd
-        run: make -f posix.mak -j$(nproc) DMD="$DMD"
+          DMD: ${{ github.workspace }}/pr/dmd/generated/linux/release/64/dmd
+        run: make -f posix.mak -j$(nproc) DMD="$DMD"  # builds phobos + druntime imports :contentReference[oaicite:5]{index=5}
 
-      # 5) Repeat steps 1–4 for master branch
-      - name: Checkout master branch
+      # 5) Repeat for Master branch
+      - name: Checkout master branch (DMD only)
         uses: actions/checkout@v4
         with:
           ref: master
-          path: master
+          path: master/dmd
           fetch-depth: 0
 
-      - name: Bootstrap DMD for Master
-        working-directory: master
+      - name: Bootstrap Master compiler
+        working-directory: master/dmd
         env:
           HOST_DMD: ${{ env.DMD }}
         run: make -f posix.mak AUTO_BOOTSTRAP=1 -j$(nproc)
 
       - name: Build Druntime for Master
-        working-directory: master/druntime
+        working-directory: master/dmd/druntime
         env:
-          DMD: ${{ github.workspace }}/master/generated/linux/release/64/dmd
+          DMD: ${{ github.workspace }}/master/dmd/generated/linux/release/64/dmd
         run: make -f posix.mak -j$(nproc) DMD="$DMD"
 
       - name: Clone Phobos for Master
@@ -72,7 +72,7 @@ jobs:
       - name: Build Phobos for Master
         working-directory: master/phobos
         env:
-          DMD: ${{ github.workspace }}/master/generated/linux/release/64/dmd
+          DMD: ${{ github.workspace }}/master/dmd/generated/linux/release/64/dmd
         run: make -f posix.mak -j$(nproc) DMD="$DMD"
 
       # 6) Export paths to both compilers
